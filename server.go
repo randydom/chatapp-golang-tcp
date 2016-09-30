@@ -6,6 +6,7 @@ import (
 	"net"
 	"log"
 	"fmt"
+	"strings"
 )
 
 const MAXCLIENT = 10 // maximum number of client to manage concurrently
@@ -28,9 +29,9 @@ type Server struct{
 	port string
 	protocol string
 	address chan *Message
-	clients map[string]*Client
-	rooms map[string]*Chatroom
-	size int
+	clients map[string]*Client // keep records of connected clients
+	rooms map[string]*Chatroom // keep record of created chatrooms
+	size int // tracks the number of connected clients
 }
 
 // Starts a tcp server on port p
@@ -40,7 +41,7 @@ func StartServer(p string) {
 	s := make(chan *Message)
 	
 	// server object
-	server := Server{port: p, protocol: "tcp", address: s, clients: make(map[string]*Client), rooms: make(map[string]*Chatroom)}
+	server := Server{port: p, protocol: "tcp", address: s, clients: make(map[string]*Client, MAXCLIENT), rooms: make(map[string]*Chatroom)}
 
 	// spawn a proxy goroutine that manages the connections
 	go server.proxy()
@@ -56,8 +57,8 @@ func StartServer(p string) {
 		case "?join": server.joinRoom(msg)
 		case "?create": server.createRoom(msg)
 		case "?leave": server.leaveRoom(msg.body)
-		case "?logout": server.logout(msg.body)
-		default: log.Println(msg)
+		case "?logout": server.logout(msg)
+		default: log.Println("Unknown command: " + msg.String())
 		}		
 	}
 
@@ -69,9 +70,10 @@ func (s *Server) proxy() {
 
 	l, err := net.Listen(s.protocol, s.port)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) // fatal server error
 	}
-	log.Println("Server running...")
+
+	log.Println("Server running ...")
 	defer l.Close()
 	
 	// handle connections
@@ -79,17 +81,26 @@ func (s *Server) proxy() {
 		// wait for connection
 		conn, err := l.Accept()
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			continue
 		}
 
-		// recieve first message - the client username
-		username, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			log.Fatal(err)
-		}
-		
+		go s.connect(conn)
+	}
+}
+
+func (s *Server) connect(conn net.Conn) {
+
+	// recieve first message - the client username
+	username, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		log.Println(err)		
+	} else {
+		// trim name before sending
+		uname := strings.TrimSpace(username);
+
 		// launch a new goroutine to create and manage client
-		go NewClient(username, conn, s.address)
+		go NewClient(uname, conn, s.address)		
 	}
 }
 
@@ -110,8 +121,7 @@ func (s *Server) login(msg *Message) int {
 		// send login failure message to interface
 		// TODO: create constants for all error messages
 		newClient.err <- &Message{subject:"Error:",body:"Username already used. Exit and login with new username"}
-		//TODO: login with anonymous and force to change immediately
-	
+		return 1
 	} else {
 		// add client to loggedin users
 		s.clients[newClient.name] = newClient
@@ -125,6 +135,8 @@ func (s *Server) login(msg *Message) int {
 		newClient.address <- &Message{body:"?join AbC -> join chatroom AbC"}
 		newClient.address <- &Message{body:"?leave AbC -> leave chatroom AbC"}
 		newClient.address <- &Message{body:"?logout -> disconnect"}
+
+		log.Print(newClient.name + " logged in")
 	}
 
 	return 0
@@ -132,14 +144,16 @@ func (s *Server) login(msg *Message) int {
 
 func (s *Server) createRoom(msg *Message) {
 	
+	//TODO: Check if user exist first
+	
 	// check if chatroom exist
 	client := msg.sender
-	roomname := msg.body
+	roomname := strings.TrimSpace(msg.body);
 
 	if _ , ok := s.rooms[roomname]; ok {
 		// send login failure message to interface
 		// TODO: create constants for all error messages
-		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom already exist. Use: join %s to join room.", roomname)}
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom already exist. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
 		log.Println("Create chatroom failed")	
 	
 	} else {
@@ -147,9 +161,9 @@ func (s *Server) createRoom(msg *Message) {
 		s.rooms[roomname] = NewChatroom(roomname)
 
 		// send success message and usage instructions to user
-		log.Print(roomname)
-		client.address <- &Message{body:fmt.Sprintf("Chatroom created. Use: \"join %s\" to join room.", roomname)}
-		log.Println("Chatroom created")
+		// log.Print(roomname)
+		client.address <- &Message{body:fmt.Sprintf("Chatroom created. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
+		log.Printf("Created %s chatroom", roomname)
 	}
 }
 
@@ -187,6 +201,14 @@ func (s *Server) listRooms(msg *Message) {
 	log.Println("listRooms")
 }
 
-func (s *Server) logout(client string) {
-	log.Println("leaveRoom")
+// remove user from connected chatrooms and connected client list
+func (s *Server) logout(msg *Message) {
+
+	client := msg.sender.name
+	// TODO: leave rooms already joined
+
+	// remove name from client list
+	delete(s.clients, client)
+
+	log.Println(client, "disconnected")
 }

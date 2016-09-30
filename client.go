@@ -14,11 +14,12 @@ import (
 /* Struct representing the chatapp client */
 type Client struct {
 	name string
-	conn net.Conn
+	conn net.Conn // connection socket
 	address chan *Message // primary message channel
 	err chan *Message // channel for recieving errors
 	server chan *Message // server's address
 }
+
 //TODO: Make Client implement Stringer interface
 //TODO: Consider implementing error interface for some of this guiys
 
@@ -43,12 +44,11 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 		_, err := newClient.conn.Write([]byte(success.String()))
 
 		if err != nil {
-			log.Fatal()
+			log.Println(err)
 		}
-		log.Println("login successful")
-
+		
 		// handle the session in a new gorountine.
-		// one to listen on the client channel, the other to read from the client interface
+		// one to listen on the client channel, the other to listen on the socket interface
 		go newClient.listen()
 		go newClient.monitor()
 	
@@ -56,14 +56,14 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 		_, err := newClient.conn.Write([]byte(failure.String()))
 
 		if err != nil {
-			log.Fatal()
+			log.Println(err)
 		}
 
 	case <- time.After(time.Millisecond * 1500):
 		_, err := newClient.conn.Write([]byte("timed out"))
 
 		if err != nil {
-			log.Fatal()
+			log.Println(err)
 		}
 	}
 }
@@ -75,7 +75,13 @@ func (client *Client) monitor() {
 		// reads messages sent from the client interface
 		msg, err := bufio.NewReader(client.conn).ReadString('\n')
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+
+			//TODO: client disconnected, logout client... send logout message to server gorountine
+			username := client.name
+			logoutMessage := Message{title:"command", subject:"?logout", body:username, sender:client}
+			client.server <- &logoutMessage
+			break
 		}
 
 		// parses them into commands or messages
@@ -94,15 +100,20 @@ func (client *Client) monitor() {
 // returns a Message struct 
 func (client *Client) parseMessage(msg string) *Message {
 	msgStr := Message{sender: client}
-	if strings.HasPrefix(msg, "?") {
-		content := strings.SplitN(msg, " ", 2) //TODO: Test for double spaces //BUG
+	msgClean := strings.TrimSpace(msg)
 
+	if strings.HasPrefix(msg, "?") {
+		content := strings.SplitN(msgClean, " ", -1) //TODO: Test for double spaces //BUG
+	
 		msgStr.title = "command"
-		msgStr.subject = content[0]
-		msgStr.body = content[1]
+		msgStr.subject = strings.TrimSpace(content[0])
+		
+		if len(content) > 1 {
+			msgStr.body = strings.TrimSpace(content[1])	
+		}
 	} else {
 		msgStr.title = "message"
-		msgStr.subject = msg
+		msgStr.subject = msgClean		
 	}
 
 	return &msgStr
@@ -124,7 +135,7 @@ func (client *Client) listen() {
 			_, err := client.conn.Write([]byte(message.String()))
 
 			if err != nil {
-				log.Fatal()
+				log.Println()
 			}
 		}		
 	}

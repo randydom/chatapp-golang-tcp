@@ -17,12 +17,12 @@ func StartClient(port string) {
 		log.Fatal(err)
 	}
 
-	log.Println("connection established")
-	
 	fmt.Println("Welcome.")
 	fmt.Print("Login with your username: ")
 
 	go Listen(conn)
+
+	// listen for message on the standard input and echo it to the connection socket
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(conn)
 
@@ -30,7 +30,7 @@ func StartClient(port string) {
     	// read input from stdin
     	input, err := reader.ReadString('\n')
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
     
     	// send to tcp socket
@@ -39,6 +39,7 @@ func StartClient(port string) {
 			log.Println(err)
 		}
 
+		// always flush
 		err = writer.Flush()
 		if err != nil {
 			log.Println(err)
@@ -46,6 +47,7 @@ func StartClient(port string) {
 	}	
 }
 
+// listen for message on the connection socket and echo it to the standard output
 func Listen(conn net.Conn) {
 	
 	reader := bufio.NewReader(conn)
