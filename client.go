@@ -68,6 +68,13 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 	}
 }
 
+func (client *Client) logout() {
+	//TODO: client disconnected, logout client... send logout message to server gorountine
+	username := client.name
+	logoutMessage := Message{title:"command", subject:"?logout", body:username, sender:client}
+	client.server <- &logoutMessage
+}
+
 // manages the communication between the client gorountine and the interface
 // by monitoring it for new messages or commands from the user
 func (client *Client) monitor() {
@@ -76,11 +83,7 @@ func (client *Client) monitor() {
 		msg, err := bufio.NewReader(client.conn).ReadString('\n')
 		if err != nil {
 			log.Println(err)
-
-			//TODO: client disconnected, logout client... send logout message to server gorountine
-			username := client.name
-			logoutMessage := Message{title:"command", subject:"?logout", body:username, sender:client}
-			client.server <- &logoutMessage
+			client.logout()
 			break
 		}
 
@@ -89,7 +92,10 @@ func (client *Client) monitor() {
 
 		// sends commands to the server to process, using serverInAddr
 		if message.title == "command" {
-			client.server <- message	
+			client.server <- message
+			if message.subject == "?logout" {
+				break
+			}
 		} else { // sends message to the appropriate chatroom
 			fmt.Println("sends message to the appropriate chatroom")
 		}		
@@ -135,8 +141,12 @@ func (client *Client) listen() {
 			_, err := client.conn.Write([]byte(message.String()))
 
 			if err != nil {
-				log.Println()
+				log.Println(err)
 			}
+
+			if message.subject == "Exit:"  {
+				break
+ 			}
 		}		
 	}
 }
