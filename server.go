@@ -104,27 +104,32 @@ func (s *Server) connect(conn net.Conn) {
 	}
 }
 
-
 // process login of the client to the server
-func (s *Server) login(msg *Message) int {
+func (s *Server) login(msg *Message) {
 
 	// confirm that the client limit is not exceeded
 	newClient := msg.sender
 	if s.size >= MAXCLIENT {
 		// send login failure message to interface
 		newClient.err <- &Message{subject:"Error",body:"Current client count exceeded maximum. The server cannot login anymore client"}
-		return 1
+		return
+	}
+
+	clientname := newClient.name
+	if clientname == "" {
+		newClient.err <- &Message{subject:"Error:",body:"Username cannot be empty. Exit and login with new username"}
+		return
 	}
 	
 	// confirm that user is not already logged-in
-	if _ , ok := s.clients[newClient.name]; ok {
+	if _ , ok := s.clients[clientname]; ok {
 		// send login failure message to interface
 		// TODO: create constants for all error messages
 		newClient.err <- &Message{subject:"Error:",body:"Username already used. Exit and login with new username"}
-		return 1
+		return
 	} else {
 		// add client to loggedin users
-		s.clients[newClient.name] = newClient
+		s.clients[clientname] = newClient
 		s.size++
 
 		// send success message and usage instructions to user
@@ -136,10 +141,8 @@ func (s *Server) login(msg *Message) int {
 		newClient.address <- &Message{body:"?leave AbC -> leave chatroom AbC"}
 		newClient.address <- &Message{body:"?logout -> disconnect"}
 
-		log.Print(newClient.name + " logged in")
+		log.Print(clientname + " logged in")
 	}
-
-	return 0
 }
 
 func (s *Server) createRoom(msg *Message) {
@@ -149,52 +152,45 @@ func (s *Server) createRoom(msg *Message) {
 	// // confirm that user is already logged-in
 	// if _ , ok := s.clients[newClient.name]; ok {
 
-		// check if chatroom exist
-		roomname := strings.TrimSpace(msg.body);
+	// check if chatroom exist
+	roomname := strings.TrimSpace(msg.body);
+	if roomname == "" {
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom cannot have an empty name. Use a different name")}
+		log.Println("Create chatroom failed")
+		return
+	}
 
+	if _ , ok := s.rooms[roomname]; ok {
+		// send login failure message to interface
+		// TODO: create constants for all error messages
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom already exist. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
+		log.Println("Create chatroom failed")	
+	
+	} else {
+		// create new chatroom
+		s.rooms[roomname] = NewChatroom(roomname)
 
-		if _ , ok := s.rooms[roomname]; ok {
-			// send login failure message to interface
-			// TODO: create constants for all error messages
-			client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom already exist. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
-			log.Println("Create chatroom failed")	
-		
-		} else {
-			// create new chatroom
-			s.rooms[roomname] = NewChatroom(roomname)
-
-			// send success message and usage instructions to user
-			// log.Print(roomname)
-			client.address <- &Message{body:fmt.Sprintf("Chatroom created. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
-			log.Printf("Created %s chatroom", roomname)
-		}
+		// send success message and usage instructions to user
+		// log.Print(roomname)
+		client.address <- &Message{body:fmt.Sprintf("Chatroom created. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
+		log.Printf("Created %s chatroom", roomname)
+	}
 }
 
 func (s *Server) joinRoom(msg *Message) {
 
-	//TODO: Check if user exist first
-	roomname := msg.body
+	roomname := strings.TrimSpace(msg.body)
 	client := msg.sender
-	if _ , ok := s.rooms[roomname]; ok {
-		
+	if room, ok := s.rooms[roomname]; ok {		
 		// join chatroom
-		// if response, ok := s.chatroom[roomname].JoinRoom(client); ok {
-			// send success message and usage instructions to user
-			client.address <- &Message{subject: "Success", body:fmt.Sprintf("Joined room. Use: ?%s followed by your message to send to room.", roomname)}
-			log.Print(client.name + " joined " + roomname + " room")
-
-		
-		// } else {
-		// 	client.address <- &Message{subject:"Error", body: response}
-		// 	log.Println("Join room failed")
-		// }
-	
+		// check if room exists ---- done!
+		// send a message to room address with client details
+		room.commChannel <- &Message{subject: "join", body:client.name, sender:client}	
 	} else {
 		// send login failure message to interface
 		// TODO: create constants for all error messages
-		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom already exist. Use: \"?join %s\" (without the quotes) to join room.", roomname)}
-		log.Println("Create new chatroom failed")	
-
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom does not exist. Use: \"?create %s\" (without the quotes) to create room.", roomname)}
+		log.Printf("Join %s chatroom failed", roomname)
 	}	
 }
 

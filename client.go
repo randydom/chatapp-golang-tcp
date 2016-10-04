@@ -18,6 +18,7 @@ type Client struct {
 	address chan *Message // primary message channel
 	err chan *Message // channel for recieving errors
 	server chan *Message // server's address
+	rooms map[string] chan *Message //keep record of connected chatrooms address
 }
 
 //TODO: Make Client implement Stringer interface
@@ -30,9 +31,10 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 	// client addresses
 	self := make(chan *Message)
 	err := make(chan *Message)
+	rooms := make(map[string] chan *Message)
 	
 	// client structure
-	newClient := Client{username, conn, self, err, serverAddr}
+	newClient := Client{username, conn, self, err, serverAddr, rooms}
 
 	// send login message to server gorountine
 	loginMessage := Message{title:"command", subject:"?login", body:username, sender:&newClient}
@@ -88,7 +90,12 @@ func (client *Client) monitor() {
 		}
 
 		// parses them into commands or messages
-		message := client.parseMessage(msg)
+		msgClean := strings.TrimSpace(msg)
+		if len(msgClean) == 0 {
+			continue
+		}
+
+		message := client.parseMessage(msgClean)
 
 		// sends commands to the server to process, using serverInAddr
 		if message.title == "command" {
@@ -104,15 +111,16 @@ func (client *Client) monitor() {
 
 // parses the messages sent from the interface to the client
 // returns a Message struct 
-func (client *Client) parseMessage(msg string) *Message {
+func (client *Client) parseMessage(msgClean string) *Message {
 	msgStr := Message{sender: client}
-	msgClean := strings.TrimSpace(msg)
 
-	if strings.HasPrefix(msg, "?") {
-		content := strings.SplitN(msgClean, " ", -1) //TODO: Test for double spaces //BUG
+	if strings.HasPrefix(msgClean, "?") {
+		content := strings.Fields(msgClean) //TODO: Test for double spaces //BUG
 	
 		msgStr.title = "command"
-		msgStr.subject = strings.TrimSpace(content[0])
+		msgStr.subject = content[0]
+		log.Println(content)
+		log.Println(len(content))
 		
 		if len(content) > 1 {
 			msgStr.body = strings.TrimSpace(content[1])	
@@ -146,6 +154,11 @@ func (client *Client) listen() {
 
 			if message.subject == "Exit:"  {
 				break
+ 			}
+
+ 			if message.subject == "Connected:" {
+ 				// client.rooms[message.body] = message.sender.address
+ 				log.Println("Connected to room" + message.body)
  			}
 		}		
 	}
