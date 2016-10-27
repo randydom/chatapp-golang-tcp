@@ -190,9 +190,10 @@ func (s *Server) joinRoom(msg *Message) {
 		// send login failure message to interface
 		// TODO: create constants for all error messages
 		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Chatroom does not exist. Use: \"?create %s\" (without the quotes) to create room.", roomname)}
-		log.Printf("Join %s chatroom failed", roomname)
+		log.Print("Join chatroom failed")
 	}	
 }
+
 
 func (s *Server) leaveRoom(client string) {
 	log.Println("leaveRoom")

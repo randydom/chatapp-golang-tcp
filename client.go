@@ -7,9 +7,12 @@ import (
 	"net"
 	"log"
 	"strings"
-	"fmt"
 	"time"
+	"fmt"
 )
+
+
+var FACE = [5]string{"?list","?join","?create","?leave", "?logout"} //server api
 
 /* Struct representing the chatapp client */
 type Client struct {
@@ -70,6 +73,25 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 	}
 }
 
+func (client *Client) messageRoom(msg *Message) {
+
+	// details
+	room := msg.subject
+
+	// locate room address
+	if rmAddress, ok := client.rooms[room]; ok {		
+		t := time.Now()
+		info := fmt.Sprintf("[%v](%d-%d-%v %d:%d) %v: %v", strings.TrimPrefix(room, "?"), t.Day(), t.Month(), t.Year(), t.Hour(), t.Minute(), client.name, msg.body)
+		// info := fmt.Sprintf("(%s) %s: %s", time.Now().Format(""), client.name, msg.body)
+
+		// send message to address
+		rmAddress <- &Message{title:"broadcast", subject:info}
+	} else {
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Either you are not a member of this room or the room does not exist. Use: \"?list\" (without the quotes) to list available rooms.")}
+		fmt.Println("error")
+	}
+}
+
 func (client *Client) logout() {
 	//TODO: client disconnected, logout client... send logout message to server gorountine
 	username := client.name
@@ -104,7 +126,7 @@ func (client *Client) monitor() {
 				break
 			}
 		} else { // sends message to the appropriate chatroom
-			fmt.Println("sends message to the appropriate chatroom")
+			client.messageRoom(message)
 		}		
 	}
 }
@@ -112,22 +134,25 @@ func (client *Client) monitor() {
 // parses the messages sent from the interface to the client
 // returns a Message struct 
 func (client *Client) parseMessage(msgClean string) *Message {
-	msgStr := Message{sender: client}
-
-	if strings.HasPrefix(msgClean, "?") {
-		content := strings.Fields(msgClean) //TODO: Test for double spaces //BUG
 	
-		msgStr.title = "command"
-		msgStr.subject = content[0]
-		log.Println(content)
-		log.Println(len(content))
-		
-		if len(content) > 1 {
-			msgStr.body = strings.TrimSpace(content[1])	
+	msgStr := Message{sender: client}
+	content := strings.Fields(msgClean)
+	for _, b := range FACE {
+		if b == content[0] {
+			msgStr.title = "command"
+			msgStr.subject = content[0]
+			
+			if len(content) > 1 {
+				msgStr.body = strings.TrimSpace(content[1])	
+			}
+			return &msgStr
 		}
-	} else {
-		msgStr.title = "message"
-		msgStr.subject = msgClean		
+	}
+
+	msgStr.title = "message"
+	msgStr.subject = content[0]
+	if len(content) > 1 {
+		msgStr.body = strings.Join(content[1:], " ")
 	}
 
 	return &msgStr
@@ -140,6 +165,12 @@ func (client *Client) listen() {
 	for {
 		select {
 		case message := <- client.address:
+
+ 			if message.title == "admin" {
+ 				// add chatroom address to client records
+ 				roomname := "?"+message.subject
+ 				client.rooms[roomname] = message.sender.address
+ 			}
 			_, err := client.conn.Write([]byte(message.String()))
 			if err != nil {
 				log.Println(err)
@@ -154,11 +185,6 @@ func (client *Client) listen() {
 
 			if message.subject == "Exit:"  {
 				break
- 			}
-
- 			if message.subject == "Connected:" {
- 				// client.rooms[message.body] = message.sender.address
- 				log.Println("Connected to room" + message.body)
  			}
 		}		
 	}
