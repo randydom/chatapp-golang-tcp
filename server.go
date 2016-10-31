@@ -57,6 +57,7 @@ func StartServer(p string) {
 		case "?join": server.joinRoom(msg)
 		case "?create": server.createRoom(msg)
 		case "?logout": server.logout(msg)
+		case "?destroy": server.destroyRoom(msg)
 		case "?help": server.help(msg)
 		default: log.Println("Unknown command: " + msg.String())
 		}		
@@ -164,7 +165,7 @@ func (s *Server) createRoom(msg *Message) {
 	
 	} else {
 		// create new chatroom
-		s.rooms[roomname] = NewChatroom(roomname)
+		s.rooms[roomname] = NewChatroom(roomname, s.address)
 
 		// send success message and usage instructions to user
 		// log.Print(roomname)
@@ -172,6 +173,19 @@ func (s *Server) createRoom(msg *Message) {
 		log.Printf("Created %s chatroom", roomname)
 	}
 }
+
+func (s *Server) destroyRoom(msg *Message) {
+
+	// check if chatroom exist
+	roomname := strings.TrimSpace(msg.body);
+	if _ , ok := s.rooms[roomname]; ok {
+		//delete room
+		delete(s.rooms, roomname)
+		log.Printf("%s chatroom destroyed", roomname)		
+	}
+}
+
+
 
 func (s *Server) joinRoom(msg *Message) {
 

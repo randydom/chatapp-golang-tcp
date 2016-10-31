@@ -224,6 +224,13 @@ func (client *Client) listen() {
  				client.roomsA[roomname] = message.sender.address
  			}
 
+			if message.title == "Expired" {
+				// remove expired rooms
+				roomname := "?"+message.subject
+				delete(client.rooms, roomname)
+				delete(client.roomsA, roomname)
+			}
+
 			_, err := client.conn.Write([]byte(message.String()))
 			if err != nil {
 				log.Println(err)

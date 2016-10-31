@@ -2,6 +2,7 @@ package chatapp
 
 import (
 	"log"
+	"time"
 	"fmt"
 )
 
@@ -14,11 +15,12 @@ type Chatroom struct {
 	clients	map[string] chan *Message
 	msgChannel chan *Message
 	commChannel chan *Message
+	server chan *Message // server's address
 	messages []*Message
 }
 
 // NewChatroom creates a chatroom and opens it in a new goroutine
-func NewChatroom(roomname string) *Chatroom {
+func NewChatroom(roomname string, serverAddr chan *Message) *Chatroom {
 
 	// setup channels for communcation
 	roomChan1 := make(chan *Message)
@@ -26,8 +28,9 @@ func NewChatroom(roomname string) *Chatroom {
 	msgBox := make([]*Message, 0, MESSAGECAP)
 	clientList := make(map[string] chan *Message)
 
+
 	// create room
-	chatroom := Chatroom{name:roomname, clients:clientList, msgChannel: roomChan1, commChannel:roomChan2, messages:msgBox}
+	chatroom := Chatroom{name:roomname, clients:clientList, msgChannel: roomChan1, commChannel:roomChan2, server:serverAddr, messages:msgBox}
 
 	// launch room in its open goroutine
 	go chatroom.open()
@@ -85,6 +88,15 @@ func (room *Chatroom) open() {
 					log.Printf("%s has left %s chatroom", user, room.name)
 				}
 			}					
+		
+		case <- time.After(time.Hour * 24 * 7):
+			// destroy chatroom after 7 days
+			for _,v := range room.clients {
+				v <- &Message{title:"Expired", subject:room.name, body:fmt.Sprintf(": Chatroom has expired.")}
+			}
+
+			room.server <- &Message{subject:"?destroy", body:room.name}
+			return
 		}
 	}		
 }
