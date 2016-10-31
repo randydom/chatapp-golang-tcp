@@ -12,7 +12,7 @@ import (
 )
 
 
-var FACE = [6]string{"?list","?join","?create","?leave", "?logout", "?help"} //server api
+var FACE = [6]string{"?list","?join","?create","?logout", "?leave", "?help"} //server api
 
 /* Struct representing the chatapp client */
 type Client struct {
@@ -21,7 +21,8 @@ type Client struct {
 	address chan *Message // primary message channel
 	err chan *Message // channel for recieving errors
 	server chan *Message // server's address
-	rooms map[string] chan *Message //keep record of connected chatrooms address
+	rooms map[string] chan *Message //keep record of connected chatrooms message address
+	roomsA map[string] chan *Message //keep record of the connected chatroom admin address
 }
 
 //TODO: Make Client implement Stringer interface
@@ -35,9 +36,10 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 	self := make(chan *Message)
 	err := make(chan *Message)
 	rooms := make(map[string] chan *Message)
+	roomsA := make(map[string] chan *Message)
 	
 	// client structure
-	newClient := Client{username, conn, self, err, serverAddr, rooms}
+	newClient := Client{username, conn, self, err, serverAddr, rooms, roomsA}
 
 	// send login message to server gorountine
 	loginMessage := Message{title:"command", subject:"?login", body:username, sender:&newClient}
@@ -73,6 +75,44 @@ func NewClient(username string, conn net.Conn, serverAddr chan *Message) {
 	}
 }
 
+// leave all rooms before logout
+func (client *Client) leaveRooms() {
+	for room, rmAddress := range client.roomsA {
+		delete(client.rooms, room)
+		delete(client.roomsA, room)
+		
+		// send leave message to chatroom communique address
+		rmAddress <- &Message{title:"leave", body:client.name}
+		client.err <- &Message{subject:"fdas", body:fmt.Sprintf(": You have left chatroom.")}
+	}
+}
+
+// leave room, roomname
+func (client *Client) leaveRoom(msg *Message) {
+
+	// details
+	roomname := strings.TrimSpace(msg.body)
+	room := "?"+roomname
+
+	// locate room address
+	if rmAddress, ok := client.roomsA[room]; ok {		
+		
+		// delete room reference
+		delete(client.rooms, room)
+		delete(client.roomsA, room)
+		
+		// send leave message to chatroom communique address
+		rmAddress <- &Message{title:"leave", body:client.name}
+		client.err <- &Message{subject:roomname, body:fmt.Sprintf(": You have left chatroom.")}
+
+		// leaveMessage := Message{title:"command", subject:"?echo", body:fmt.Sprintf("%s, has left room %s.", client.name, room)}
+		//client.server <- &leaveMessage
+	} else {
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("You are not currently in this room.")}
+	}
+
+}
+
 func (client *Client) messageRoom(msg *Message) {
 
 	// details
@@ -82,7 +122,6 @@ func (client *Client) messageRoom(msg *Message) {
 	if rmAddress, ok := client.rooms[room]; ok {		
 		t := time.Now()
 		info := fmt.Sprintf("[%v](%d-%d-%v %d:%d) %v: %v", strings.TrimPrefix(room, "?"), t.Day(), t.Month(), t.Year(), t.Hour(), t.Minute(), client.name, msg.body)
-		// info := fmt.Sprintf("(%s) %s: %s", time.Now().Format(""), client.name, msg.body)
 
 		// send message to address
 		rmAddress <- &Message{title:"broadcast", subject:info}
@@ -90,6 +129,7 @@ func (client *Client) messageRoom(msg *Message) {
 		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Command not recognized or Room not Found. Use: \"?list\" (without the quotes) to list available rooms. Use: \"?help\" (without the quotes) to list available commands.")}
 	}
 }
+
 
 func (client *Client) logout() {
 	//TODO: client disconnected, logout client... send logout message to server gorountine
@@ -107,6 +147,7 @@ func (client *Client) monitor() {
 		msg, err := bufio.NewReader(client.conn).ReadString('\n')
 		if err != nil {
 			log.Println(err)
+			client.leaveRooms()
 			client.logout()
 			break
 		}
@@ -121,9 +162,14 @@ func (client *Client) monitor() {
 
 		// sends commands to the server to process, using serverInAddr
 		if message.title == "command" {
-			client.server <- message
-			if message.subject == "?logout" {
-				break
+			if message.subject == "?leave" {
+				client.leaveRoom(message)
+			} else {
+				client.server <- message
+				if message.subject == "?logout" {
+					client.leaveRooms()
+					break
+				}
 			}
 		} else { // sends message to the appropriate chatroom
 			client.messageRoom(message)
@@ -166,11 +212,18 @@ func (client *Client) listen() {
 		select {
 		case message := <- client.address:
 
- 			if message.title == "admin" {
+ 			if message.title == "chatroomA" {
  				// add chatroom address to client records
  				roomname := "?"+message.subject
  				client.rooms[roomname] = message.sender.address
  			}
+
+ 			if message.title == "chatroomB" {
+ 				// add chatroomA address to client records
+ 				roomname := "?"+message.subject
+ 				client.roomsA[roomname] = message.sender.address
+ 			}
+
 			_, err := client.conn.Write([]byte(message.String()))
 			if err != nil {
 				log.Println(err)

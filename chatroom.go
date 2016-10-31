@@ -15,7 +15,6 @@ type Chatroom struct {
 	msgChannel chan *Message
 	commChannel chan *Message
 	messages []*Message
-	clientProxy *Client
 }
 
 // NewChatroom creates a chatroom and opens it in a new goroutine
@@ -26,11 +25,9 @@ func NewChatroom(roomname string) *Chatroom {
 	roomChan2 := make(chan *Message)
 	msgBox := make([]*Message, 0, MESSAGECAP)
 	clientList := make(map[string] chan *Message)
-	clientP := Client{}
-	clientP.address = roomChan1
 
 	// create room
-	chatroom := Chatroom{name:roomname, clients:clientList, msgChannel: roomChan1, commChannel:roomChan2, messages:msgBox, clientProxy:&clientP}
+	chatroom := Chatroom{name:roomname, clients:clientList, msgChannel: roomChan1, commChannel:roomChan2, messages:msgBox}
 
 	// launch room in its open goroutine
 	go chatroom.open()
@@ -45,6 +42,7 @@ func (room *Chatroom) open() {
 		// recieve a message on the room channel
 		select {
 		case message := <- room.msgChannel:
+
 			// save in message archive
 			room.messages = append(room.messages, message)
 
@@ -54,26 +52,39 @@ func (room *Chatroom) open() {
 			}
 								
 		case communique := <- room.commChannel:
+			user := communique.body
+
 			if communique.subject == "join" {
-				user := communique.body
 				address := communique.sender.address
+				clientA := &Client{}
+				clientA.address = room.msgChannel
 
 				if _, ok := room.clients[user]; ok {
-					address <- &Message{body:fmt.Sprintf("You are already in this chatroom, use ?%s followed by space and the message to send to room", room.name), sender: room.clientProxy}
+					address <- &Message{body:fmt.Sprintf("You are already in this chatroom, use ?%s followed by space and the message to send to room", room.name), sender: clientA}
 				} else {
 					room.clients[user] = address
-					responseMessage := Message{title:"admin", subject:room.name, body:fmt.Sprintf(": You have joined chatroom, use ?%s followed by space and the message to send to room", room.name), sender: room.clientProxy}
-					address <- &responseMessage
+					clientB := &Client{}
+					clientB.address = room.commChannel
+
+					responseMessageA := Message{title:"chatroomA", subject:room.name, body:fmt.Sprintf(": You have joined chatroom"), sender: clientA}
+					responseMessageB := Message{title:"chatroomB", subject:room.name, body:fmt.Sprintf(": Use ?%s followed by space and the message to send to room", room.name), sender: clientB}
+
+					address <- &responseMessageA
+					address <- &responseMessageB
+
 					log.Printf("%s has joined %s chatroom", user, room.name)
 
 					for _,v := range room.messages {
 						address <- v
 					}
 				}
-			} else {
-					//TODO: handle later
-					log.Println(communique)
-			}			
+			}
+			if communique.title == "leave" {
+				if _, ok := room.clients[user]; ok {
+					delete(room.clients, user)
+					log.Printf("%s has left %s chatroom", user, room.name)
+				}
+			}					
 		}
 	}		
 }

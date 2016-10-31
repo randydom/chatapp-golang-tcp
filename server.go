@@ -56,7 +56,6 @@ func StartServer(p string) {
 		case "?list": server.listRooms(msg)
 		case "?join": server.joinRoom(msg)
 		case "?create": server.createRoom(msg)
-		case "?leave": server.leaveRoom(msg.body)
 		case "?logout": server.logout(msg)
 		case "?help": server.help(msg)
 		default: log.Println("Unknown command: " + msg.String())
@@ -192,10 +191,6 @@ func (s *Server) joinRoom(msg *Message) {
 }
 
 
-func (s *Server) leaveRoom(client string) {
-	log.Println("leaveRoom")
-}
-
 // send list of available rooms
 func (s *Server) listRooms(msg *Message) {
 	client := msg.sender
@@ -224,8 +219,6 @@ func (s *Server) logout(msg *Message) {
 
 	client := msg.sender
 	clientname := client.name
-
-	// TODO: leave rooms already joined
 
 	// remove name from client list
 	client.err <- &Message{subject:"Exit:", body:"Session has been disconnected. Close window."}
