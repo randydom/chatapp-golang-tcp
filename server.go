@@ -230,6 +230,7 @@ func (s *Server) logout(msg *Message) {
 	// remove name from client list
 	client.err <- &Message{subject:"Exit:", body:"Session has been disconnected. Close window."}
 	delete(s.clients, clientname)
+	s.size--
 	
 	log.Println(clientname, "disconnected")
 }
