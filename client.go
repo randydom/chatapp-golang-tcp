@@ -12,7 +12,7 @@ import (
 )
 
 
-var FACE = [5]string{"?list","?join","?create","?leave", "?logout"} //server api
+var FACE = [6]string{"?list","?join","?create","?leave", "?logout", "?help"} //server api
 
 /* Struct representing the chatapp client */
 type Client struct {
@@ -87,13 +87,13 @@ func (client *Client) messageRoom(msg *Message) {
 		// send message to address
 		rmAddress <- &Message{title:"broadcast", subject:info}
 	} else {
-		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Either you are not a member of this room or the room does not exist. Use: \"?list\" (without the quotes) to list available rooms.")}
-		fmt.Println("error")
+		client.err <- &Message{subject:"Error:", body:fmt.Sprintf("Command not recognized or Room not Found. Use: \"?list\" (without the quotes) to list available rooms. Use: \"?help\" (without the quotes) to list available commands.")}
 	}
 }
 
 func (client *Client) logout() {
 	//TODO: client disconnected, logout client... send logout message to server gorountine
+	//TODO : ensure that logout calls leave chatroom
 	username := client.name
 	logoutMessage := Message{title:"command", subject:"?logout", body:username, sender:client}
 	client.server <- &logoutMessage

@@ -58,6 +58,7 @@ func StartServer(p string) {
 		case "?create": server.createRoom(msg)
 		case "?leave": server.leaveRoom(msg.body)
 		case "?logout": server.logout(msg)
+		case "?help": server.help(msg)
 		default: log.Println("Unknown command: " + msg.String())
 		}		
 	}
@@ -132,15 +133,11 @@ func (s *Server) login(msg *Message) {
 		s.clients[clientname] = newClient
 		s.size++
 
-		// send success message and usage instructions to user
+		// send success message
 		newClient.address <- &Message{subject:"login successful"}
-		newClient.address <- &Message{subject:"Usage instructions"}
-		newClient.address <- &Message{body:"?create AbC -> creates a chat room and set name to AbC"}		
-		newClient.address <- &Message{body:"?list -> list the existing rooms"}
-		newClient.address <- &Message{body:"?join AbC -> join chatroom AbC"}
-		newClient.address <- &Message{body:"?leave AbC -> leave chatroom AbC"}
-		newClient.address <- &Message{body:"?logout -> disconnect"}
 
+		// send usage instructions to user
+		s.help(msg)
 		log.Print(clientname + " logged in")
 	}
 }
@@ -199,8 +196,27 @@ func (s *Server) leaveRoom(client string) {
 	log.Println("leaveRoom")
 }
 
+// send list of available rooms
 func (s *Server) listRooms(msg *Message) {
-	log.Println("listRooms")
+	client := msg.sender
+	client.address <- &Message{subject:"Available rooms"}
+	for i, _ := range s.rooms {
+		client.address <- &Message{body:i}		
+	}
+}
+
+// send usage instructions to client
+func (s *Server) help(msg *Message) {
+
+	client := msg.sender
+
+	client.address <- &Message{subject:"Usage instructions"}
+	client.address <- &Message{body:"?create AbC -> creates a chat room and set name to AbC"}		
+	client.address <- &Message{body:"?list -> list the existing rooms"}
+	client.address <- &Message{body:"?join AbC -> join chatroom AbC"}
+	client.address <- &Message{body:"?leave AbC -> leave chatroom AbC"}
+	client.address <- &Message{body:"?logout -> disconnect"}
+	client.address <- &Message{body:"?help -> usage instructions"}
 }
 
 // remove user from connected chatrooms and connected client list
